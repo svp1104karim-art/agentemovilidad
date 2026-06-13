@@ -303,7 +303,7 @@ if opcion == "📊 Dashboard de Control":
     with c1:
         st.subheader("⚠️ Distribución de Inconsistencias")
         if num_inconsistencias > 0:
-            st.bar_chart(df_active['INCONSISTENCIA_JUSTIFICACION'].value_counts())
+            st.bar_chart(inconsistencias['INCONSISTENCIA_JUSTIFICACION'].value_counts())
         else:
             st.info("No hay inconsistencias en la base de datos actual.")
     with c2:
