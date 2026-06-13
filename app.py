@@ -1,0 +1,96 @@
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+import streamlit as st
+
+# --- CONFIGURACIÓN DE LA PÁGINA ---
+st.set_page_config(page_title="TransitoLegal AI Prototipo", page_icon="🚦", layout="wide")
+
+st.title("🚦 TransitoLegal AI - Prototipo Web")
+st.markdown("""
+Esta es una versión web del prototipo. Selecciona un comparendo de la lista para ver el diagnóstico de la IA.
+""")
+
+# --- 1. CARGAR DATOS Y MODELO ---
+@st.cache_data
+def cargar_datos_y_modelo():
+    try:
+        df = pd.read_csv('dataset.csv')
+    except FileNotFoundError:
+        st.error("🚨 El archivo 'dataset.csv' no se encuentra. Asegúrate de subirlo en la misma carpeta que este script.")
+        st.stop()
+
+    df['FECHA_INFRACCION'] = pd.to_datetime(df['FECHA_INFRACCION'], dayfirst=True)
+    fecha_referencia = pd.to_datetime('01/01/2018')
+    df['DIAS_DESDE_REFERENCIA'] = (df['FECHA_INFRACCION'] - fecha_referencia).dt.days
+
+    features = ['DIAS_DESDE_REFERENCIA', 'CLASE_VEHI', 'COD_INFRACCION']
+    X = df[features]
+    y = df['INCONSISTENCIA_JUSTIFICACION']
+
+    le_clase = LabelEncoder()
+    le_codigo = LabelEncoder()
+
+    X['CLASE_VEHI_NUM'] = le_clase.fit_transform(X['CLASE_VEHI'])
+    X['COD_INFRACCION_NUM'] = le_codigo.fit_transform(X['COD_INFRACCION'])
+    X = X.drop(['CLASE_VEHI', 'COD_INFRACCION'], axis=1)
+
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X, y)
+
+    return df, model, le_clase, le_codigo
+
+df, model, le_clase, le_codigo = cargar_datos_y_modelo()
+
+# --- 2. INTERFAZ DE USUARIO ---
+
+st.header("🔍 Consultar un Comparendo")
+comparendo_seleccionado = st.selectbox("Elige un ID de Comparendo del dataset:", df['ID_COMPARENDO'].tolist())
+
+if st.button("Analizar con IA"):
+    caso = df[df['ID_COMPARENDO'] == comparendo_seleccionado].iloc[0]
+
+    fecha = caso['FECHA_INFRACCION']
+    fecha_referencia = pd.to_datetime('01/01/2018')
+    dias = (fecha - fecha_referencia).days
+    clase = le_clase.transform([caso['CLASE_VEHI']])[0]
+    codigo = le_codigo.transform([caso['COD_INFRACCION']])[0]
+    
+    datos_prediccion = [[dias, clase, codigo]]
+
+    prediccion = model.predict(datos_prediccion)[0]
+    probabilidades = model.predict_proba(datos_prediccion)[0]
+    confianza = max(probabilidades)
+
+    st.subheader("📋 Resultados del Análisis")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("ID del Comparendo", caso['ID_COMPARENDO'])
+        st.metric("Fecha de Infracción", str(caso['FECHA_INFRACCION'].date()))
+        st.metric("Vehículo", f"{caso['CLASE_VEHI']} ({caso['PLACA']})")
+
+    with col2:
+        st.metric("Código de Infracción", caso['COD_INFRACCION'])
+        st.metric("Valor de la Sanción", f"${caso['VALOR_SANCION']:,.0f}")
+        st.metric("Estado", caso['ESTADO'])
+
+    st.divider()
+
+    st.subheader("🤖 Diagnóstico de la IA")
+    if prediccion == 'SIN INCONSISTENCIAS':
+        st.success(f"✅ **Diagnóstico:** {prediccion}")
+        st.info(f"La IA tiene una confianza del **{confianza * 100:.2f}%** en este resultado.")
+        st.write("💡 **Recomendación:** El comparendo parece correcto. Considera pagar antes de la fecha límite para obtener el descuento por pronto pago.")
+    elif 'PRESCRITO' in prediccion:
+        st.error(f"⚖️ **Diagnóstico:** {prediccion}")
+        st.info(f"La IA tiene una confianza del **{confianza * 100:.2f}%** en este resultado.")
+        st.write("💡 **¡Oportunidad!** La sanción puede estar prescrita. Se recomienda **fuertemente** presentar un derecho de petición para anularla.")
+    elif 'ERROR' in prediccion:
+        st.warning(f"⚠️ **Diagnóstico:** {prediccion}")
+        st.info(f"La IA tiene una confianza del **{confianza * 100:.2f}%** en este resultado.")
+        st.write("💡 **¡Atención!** Se detectó una inconsistencia legal. Se recomienda impugnar el comparendo para evitar el pago injusto.")
+    else:
+        st.info(f"📋 **Diagnóstico:** {prediccion}")
+        st.write("Por favor, revisa el estado y los detalles del comparendo.")
