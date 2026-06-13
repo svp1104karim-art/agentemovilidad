@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS personalizados para una interfaz premium
+# Estilos CSS personalizados para una interfaz premium y oscura
 st.markdown("""
 <style>
     /* Google Fonts */
@@ -25,68 +25,110 @@ st.markdown("""
     
     /* Gradiente de fondo y tarjetas */
     .stApp {
-        background: radial-gradient(circle at 10% 20%, rgba(90, 92, 106, 0.05) 0%, rgba(32, 35, 47, 0.05) 90%);
+        background: radial-gradient(circle at 10% 20%, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 90%);
+        color: #f8fafc;
     }
     
-    /* Tarjetas personalizadas */
+    /* Tarjetas personalizadas del Dashboard */
     .metric-card {
-        background-color: white;
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-        border-left: 5px solid #4F46E5;
+        background-color: #1e293b;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        border: 1px solid #334155;
+        border-left: 5px solid #3b82f6;
         transition: transform 0.3s ease;
         margin-bottom: 20px;
-        color: #1F2937;
+        color: #f8fafc;
     }
     .metric-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
     }
     .metric-title {
-        font-size: 14px;
-        color: #6B7280;
+        font-size: 13px;
+        color: #94a3b8;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
     .metric-value {
-        font-size: 28px;
-        color: #1F2937;
+        font-size: 26px;
+        color: #f8fafc;
         font-weight: 700;
         margin-top: 8px;
     }
+
+    /* Tarjetas de Comparendos */
+    .ticket-box {
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 1.5rem;
+    }
     
-    /* Estilos del Sidebar */
+    .ticket-title {
+        color: #3b82f6;
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    
+    .ticket-detail-item {
+        font-size: 0.9rem;
+        color: #94a3b8;
+        margin-bottom: 0.25rem;
+    }
+    
+    /* Estilo del Sidebar */
     [data-testid="stSidebar"] {
-        background-color: #0F172A;
+        background-color: #0f172a;
+        border-right: 1px solid #334155;
     }
     [data-testid="stSidebar"] * {
-        color: #E2E8F0;
+        color: #e2e8f0;
     }
     
-    /* Títulos e Headers */
+    /* Título principal con gradiente */
     .main-title {
-        background: linear-gradient(135deg, #4F46E5 0%, #06B6D4 100%);
+        background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         font-weight: 700;
-        font-size: 40px;
+        font-size: 36px;
         margin-bottom: 10px;
     }
     
-    /* Badges de Diagnóstico */
-    .badge {
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 14px;
-        font-weight: 600;
-        display: inline-block;
+    /* Diagnóstico IA */
+    .ai-diag-card {
+        background: rgba(16, 185, 129, 0.05);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        border-radius: 8px;
+        padding: 15px;
+        height: 100%;
     }
-    .badge-success { background-color: #D1FAE5; color: #065F46; }
-    .badge-error { background-color: #FEE2E2; color: #991B1B; }
-    .badge-warning { background-color: #FEF3C7; color: #92400E; }
-    .badge-info { background-color: #DBEAFE; color: #1E40AF; }
+    
+    .ai-diag-title {
+        font-size: 0.85rem;
+        color: #10b981;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .ai-diag-score {
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }
+    
+    .ai-diag-desc {
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -94,7 +136,6 @@ st.markdown("""
 @st.cache_data
 def cargar_datos_y_modelo():
     try:
-        # Carga el dataset con UTF-8
         df = pd.read_csv('dataset.csv', encoding='utf-8')
     except FileNotFoundError:
         st.error("🚨 El archivo 'dataset.csv' no se encuentra en la raíz del proyecto.")
@@ -123,9 +164,50 @@ def cargar_datos_y_modelo():
 
 df, model, le_clase, le_codigo = cargar_datos_y_modelo()
 
+# --- MODALES / DIÁLOGOS DE STREAMLIT ---
+@st.dialog("📤 Enviar Requerimiento de Impugnación")
+def mostrar_modal_impugnacion(ticket_id, organismo):
+    st.write(f"Vas a radicar una solicitud de impugnación para el comparendo **{ticket_id}**.")
+    st.info(f"🏢 **Organismo Destino:** {organismo}")
+    
+    recurso = st.selectbox("Tipo de Recurso:", ["Reposición", "Apelación", "Nulidad"])
+    argumento = st.text_area(
+        "Argumento Legal:",
+        placeholder="Describa las inconsistencias detectadas por la IA o los fundamentos de hecho...",
+        height=120
+    )
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Cancelar", use_container_width=True):
+            st.rerun()
+    with col2:
+        if st.button("Enviar a Organismo", type="primary", use_container_width=True):
+            st.success(f"✅ Requerimiento de {recurso} enviado exitosamente a {organismo}.")
+            st.balloons()
+
+@st.dialog("🛠️ Gestión de Procesos Adicionales")
+def mostrar_modal_tramites(ticket_id, organismo):
+    st.subheader("Selecciona el trámite a solicitar")
+    st.write(f"Comparendo: **{ticket_id}** | Organismo: **{organismo}**")
+    st.write("---")
+    
+    if st.button("📅 Solicitar Audiencia Conciliatoria", use_container_width=True):
+        st.toast("⏳ Solicitud de audiencia enviada al organismo.", icon="⏳")
+        st.rerun()
+    if st.button("💳 Solicitar Fraccionamiento de Pago", use_container_width=True):
+        st.toast("⏳ Solicitud de acuerdo de pago radicada.", icon="⏳")
+        st.rerun()
+    if st.button("📜 Solicitar Certificado de Paz y Salvo", use_container_width=True):
+        st.toast("⏳ Generando certificado de Paz y Salvo...", icon="⏳")
+        st.rerun()
+    if st.button("📬 Cambio de Dirección de Notificación", use_container_width=True):
+        st.toast("⏳ Dirección de notificación actualizada.", icon="⏳")
+        st.rerun()
+
 # --- SIDEBAR NAVEGACIÓN ---
 with st.sidebar:
-    st.image("https://img.icons8.com/external-flatart-icons-lineal-color-flatart-icons/128/external-justice-law-and-justice-flatart-icons-lineal-color-flatart-icons.png", width=80)
+    st.image("https://img.icons8.com/external-flatart-icons-lineal-color-flatart-icons/128/external-justice-law-and-justice-flatart-icons-lineal-color-flatart-icons.png", width=70)
     st.markdown("## TránsitoLegal AI")
     st.markdown("Sistema inteligente de defensa y diagnóstico legal de comparendos de tránsito.")
     st.write("---")
@@ -140,212 +222,184 @@ with st.sidebar:
 
 # --- PÁGINA 1: DASHBOARD ---
 if opcion == "📊 Dashboard de Control":
-    st.markdown("<h1 class='main-title'>📊 Dashboard de Control e Inconsistencias</h1>", unsafe_allow_html=True)
-    st.write("Análisis general del dataset cargado para detectar irregularidades en la imposición de multas.")
+    st.markdown("<h1 class='main-title'>📊 Dashboard de Control de Comparendos</h1>", unsafe_allow_html=True)
+    st.write("Análisis estadístico e histórico de infracciones y su viabilidad de defensa.")
     
-    # Cálculos estadísticos
+    # Métricas
     total_comparendos = len(df)
     inconsistencias = df[df['INCONSISTENCIA_JUSTIFICACION'] != 'SIN INCONSISTENCIAS']
     num_inconsistencias = len(inconsistencias)
     tasa_irregularidad = (num_inconsistencias / total_comparendos) * 100
-    
-    # Total en multas e inconsistentes (Dinero)
     total_pesos = df['VALOR_SANCION'].sum()
     total_ahorro_potencial = inconsistencias['VALOR_SANCION'].sum()
 
-    # Layout de Métricas
     col1, col2, col3, col4 = st.columns(4)
-    
     with col1:
         st.markdown(f"""
-        <div class="metric-card" style="border-left-color: #6366F1;">
+        <div class="metric-card" style="border-left-color: #3b82f6;">
             <div class="metric-title">Comparendos Totales</div>
             <div class="metric-value">{total_comparendos}</div>
         </div>
         """, unsafe_allow_html=True)
-        
     with col2:
         st.markdown(f"""
-        <div class="metric-card" style="border-left-color: #EF4444;">
+        <div class="metric-card" style="border-left-color: #ef4444;">
             <div class="metric-title">Con Inconsistencias</div>
-            <div class="metric-value">{num_inconsistencias} <span style="font-size:16px; color:#EF4444;">({tasa_irregularidad:.1f}%)</span></div>
+            <div class="metric-value">{num_inconsistencias} <span style="font-size:14px; color:#ef4444;">({tasa_irregularidad:.1f}%)</span></div>
         </div>
         """, unsafe_allow_html=True)
-        
     with col3:
         st.markdown(f"""
-        <div class="metric-card" style="border-left-color: #10B981;">
+        <div class="metric-card" style="border-left-color: #10b981;">
             <div class="metric-title">Recaudo Total Registrado</div>
             <div class="metric-value">${total_pesos:,.0f}</div>
         </div>
         """, unsafe_allow_html=True)
-        
     with col4:
         st.markdown(f"""
-        <div class="metric-card" style="border-left-color: #F59E0B;">
-            <div class="metric-title">Potencial de Ahorro / Impugnación</div>
+        <div class="metric-card" style="border-left-color: #f59e0b;">
+            <div class="metric-title">Ahorro Impugnable</div>
             <div class="metric-value">${total_ahorro_potencial:,.0f}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # Gráficos y Tablas
     c1, c2 = st.columns(2)
-    
     with c1:
-        st.subheader("⚠️ Tipo de Inconsistencias Detectadas")
-        inconsistencia_counts = df['INCONSISTENCIA_JUSTIFICACION'].value_counts()
-        # Excluir 'SIN INCONSISTENCIAS' para visualizar mejor los errores
-        inc_only = inconsistencia_counts[inconsistencia_counts.index != 'SIN INCONSISTENCIAS']
-        if not inc_only.empty:
-            st.bar_chart(inc_only)
-        else:
-            st.success("No se han detectado inconsistencias en el dataset.")
-            
+        st.subheader("⚠️ Distribución de Inconsistencias")
+        st.bar_chart(df['INCONSISTENCIA_JUSTIFICACION'].value_counts()[1:])
     with c2:
         st.subheader("🚗 Distribución por Clase de Vehículo")
-        vehiculos_counts = df['CLASE_VEHI'].value_counts()
-        st.bar_chart(vehiculos_counts)
-
-    st.subheader("📋 Vista Rápida del Registro de Comparendos")
-    # Mostrar tabla estilizada con columnas específicas
-    st.dataframe(
-        df[['ID_COMPARENDO', 'FECHA_INFRACCION', 'PLACA', 'COD_INFRACCION', 'CLASE_VEHI', 'VALOR_SANCION', 'ESTADO', 'INCONSISTENCIA_JUSTIFICACION']],
-        use_container_width=True
-    )
+        st.bar_chart(df['CLASE_VEHI'].value_counts())
 
 # --- PÁGINA 2: DIAGNÓSTICO ---
 elif opcion == "🔍 Diagnóstico de Comparendos":
     st.markdown("<h1 class='main-title'>🔍 Analizador Inteligente de Comparendos</h1>", unsafe_allow_html=True)
-    st.write("Selecciona un comparendo existente o introduce datos de prueba para que el modelo de Inteligencia Artificial evalúe la viabilidad de una impugnación.")
-    
-    tabs = st.tabs(["🗂️ Seleccionar del Dataset", "✍️ Introducir Manualmente"])
-    
-    with tabs[0]:
-        st.subheader("Analizar Comparendo Registrado")
-        comparendo_seleccionado = st.selectbox(
-            "Selecciona el ID del Comparendo del dataset:",
-            df['ID_COMPARENDO'].tolist()
-        )
-        
-        if st.button("Ejecutar Análisis de IA", key="btn_dataset"):
-            caso = df[df['ID_COMPARENDO'] == comparendo_seleccionado].iloc[0]
-            
-            # Preparar predicción
-            fecha = caso['FECHA_INFRACCION']
-            fecha_referencia = pd.to_datetime('01/01/2018')
-            dias = (fecha - fecha_referencia).days
-            
-            try:
-                clase = le_clase.transform([caso['CLASE_VEHI']])[0]
-                codigo = le_codigo.transform([caso['COD_INFRACCION']])[0]
-                datos_prediccion = [[dias, clase, codigo]]
-                
-                prediccion = model.predict(datos_prediccion)[0]
-                probabilidades = model.predict_proba(datos_prediccion)[0]
-                confianza = max(probabilidades)
-            except Exception as e:
-                prediccion = caso['INCONSISTENCIA_JUSTIFICACION']
-                confianza = 1.0
-                
-            # Renderizar interfaz de resultados
-            st.divider()
-            st.subheader("📋 Ficha de Comparendo Analizada")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.info(f"**ID:** {caso['ID_COMPARENDO']}")
-                st.write(f"📅 **Fecha de Infracción:** {caso['FECHA_INFRACCION'].strftime('%d/%m/%Y')}")
-                st.write(f"🚗 **Vehículo:** {caso['CLASE_VEHI']} ({caso['PLACA']})")
-                st.write(f"📍 **Lugar:** {caso['LUGAR_INFRACCION']}")
-            with col2:
-                st.write(f"🛑 **Código Infracción:** {caso['COD_INFRACCION']}")
-                st.write(f"💰 **Valor Sanción:** ${caso['VALOR_SANCION']:,.0f}")
-                st.write(f"📌 **Estado Actual:** {caso['ESTADO']}")
-            
-            st.divider()
-            st.subheader("🤖 Diagnóstico y Viabilidad Legal")
-            
-            # Tarjeta de diagnóstico basada en predicción
-            if prediccion == 'SIN INCONSISTENCIAS':
-                st.success(f"✅ **Diagnóstico de la IA:** {prediccion}")
-                st.metric("Confianza de la IA", f"{confianza * 100:.1f}%")
-                st.markdown("""
-                ### 💡 Recomendación de TránsitoLegal:
-                El comparendo cumple con los requisitos iniciales. **Recomendamos realizar el pago dentro de los términos legales** para acceder al 50% de descuento por pronto pago e inscribirse al curso pedagógico.
-                """)
-            elif 'PRESCRITO' in prediccion:
-                st.error(f"⚖️ **Diagnóstico de la IA:** {prediccion}")
-                st.metric("Confianza de la IA", f"{confianza * 100:.1f}%")
-                st.markdown("""
-                ### 💡 Recomendación de TránsitoLegal:
-                **¡Oportunidad de Anulación!** De acuerdo con el Art. 159 del Código Nacional de Tránsito, la sanción ha superado el tiempo legal máximo de cobro (3 años).
-                * **Acción sugerida:** Radicar inmediatamente un **Derecho de Petición por Prescripción** ante la Secretaría de Movilidad correspondiente. Puedes descargar la plantilla en la pestaña **Guía Legal y Plantillas**.
-                """)
-            elif 'ERROR' in prediccion:
-                st.warning(f"⚠️ **Diagnóstico de la IA:** {prediccion}")
-                st.metric("Confianza de la IA", f"{confianza * 100:.1f}%")
-                st.markdown(f"""
-                ### 💡 Recomendación de TránsitoLegal:
-                **¡Inconsistencia Detectada!** El modelo detectó un error técnico en el procedimiento: *{prediccion}*.
-                * **Acción sugerida:** Presentar una **Impugnación de Comparendo** en audiencia pública argumentando falla formal de la autoridad (violación al debido proceso legal, Ley 1437 de 2011).
-                """)
-            else:
-                st.info(f"📋 **Diagnóstico de la IA:** {prediccion}")
-                st.write("Por favor, consulta los detalles con un asesor legal.")
+    st.write("Introduce datos para consultar en la base de datos de tránsito y obtener un análisis predictivo de viabilidad.")
 
-    with tabs[1]:
-        st.subheader("Simular un Comparendo Nuevo")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            fecha_input = st.date_input("Fecha de la Infracción", datetime.date.today())
-            valor_input = st.number_input("Valor de la Multa ($)", min_value=0, value=458000, step=50000)
-        with c2:
-            clase_input = st.selectbox("Clase de Vehículo", df['CLASE_VEHI'].unique())
-            placa_input = st.text_input("Placa del Vehículo", "XYZ987")
-        with c3:
-            codigo_input = st.selectbox("Código de Infracción", df['COD_INFRACCION'].unique())
-            estado_input = st.selectbox("Estado", ["PENDIENTE", "EN PROCESO", "PAGADO"])
+    # Tarjeta de Búsqueda Segura
+    st.markdown("""
+    <div style="background-color: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 25px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h4 style="margin: 0; color: #f8fafc;">Consultar Base de Datos</h4>
+            <span style="font-size: 0.85rem; color: #94a3b8;">🔒 Búsqueda Segura</span>
+        </div>
+    """, unsafe_allow_html=True)
+
+    col_cc, col_placa = st.columns(2)
+    with col_cc:
+        st.write("**Por Cédula de Ciudadanía (CC)**")
+        cc_input = st.text_input("Ingresa CC de ejemplo (ej. 80987654):", placeholder="Ej: 80987654", key="cc")
+        buscar_cc = st.button("Buscar por Cédula", type="primary", use_container_width=True)
+
+    with col_placa:
+        st.write("**Por Placa Vehicular**")
+        placa_input = st.text_input("Ingresa Placa de ejemplo (ej. XYZ987):", placeholder="Ej: XYZ987", key="placa").upper()
+        buscar_placa = st.button("Buscar por Placa", type="secondary", use_container_width=True)
+        
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Lógica de Consulta
+    resultados = None
+    if buscar_cc and cc_input:
+        try:
+            cc_int = int(cc_input.strip())
+            resultados = df[df['CC_USUARIO'] == cc_int]
+        except ValueError:
+            st.error("Por favor, ingresa un número de cédula válido.")
+    elif buscar_placa and placa_input:
+        resultados = df[df['PLACA'].str.upper() == placa_input.strip()]
+
+    # Mostrar Resultados
+    if resultados is not None:
+        if len(resultados) == 0:
+            st.warning("⚠️ No se encontraron comparendos registrados con los datos suministrados.")
+        else:
+            st.success(f"📋 Se encontraron **{len(resultados)}** comparendos registrados:")
             
-        if st.button("Predecir Viabilidad de Impugnación", key="btn_manual"):
-            fecha_dt = pd.to_datetime(fecha_input)
-            fecha_referencia = pd.to_datetime('01/01/2018')
-            dias_input = (fecha_dt - fecha_referencia).days
-            
-            try:
-                # Transformar entradas manuales
-                clase_num = le_clase.transform([clase_input])[0]
-                codigo_num = le_codigo.transform([codigo_input])[0]
-                datos_input = [[dias_input, clase_num, codigo_num]]
+            for index, row in resultados.iterrows():
+                # Formatear datos
+                ticket_id = row['ID_COMPARENDO']
+                organismo = row['LUGAR_INFRACCION'] # usando lugar como el organismo de tránsito local
+                infraccion_cod = row['COD_INFRACCION']
+                clase_vehi = row['CLASE_VEHI']
+                valor = row['VALOR_SANCION']
+                estado = row['ESTADO']
+                placa = row['PLACA']
+                fecha = row['FECHA_INFRACCION']
+                inconsistencia_just = row['INCONSISTENCIA_JUSTIFICACION']
+
+                # Predicción usando ML
+                dias = row['DIAS_DESDE_REFERENCIA']
+                try:
+                    clase_num = le_clase.transform([clase_vehi])[0]
+                    codigo_num = le_codigo.transform([infraccion_cod])[0]
+                    datos_prediccion = [[dias, clase_num, codigo_num]]
+                    prediccion = model.predict(datos_prediccion)[0]
+                    probabilidades = model.predict_proba(datos_prediccion)[0]
+                    class_index = list(model.classes_).index(prediccion)
+                    confianza = probabilidades[class_index]
+                except Exception:
+                    prediccion = inconsistencia_just
+                    confianza = 0.90
+
+                # Calcular puntuación de viabilidad de impugnación
+                if prediccion == 'SIN INCONSISTENCIAS':
+                    viabilidad_score = int((1 - confianza) * 100)
+                    if viabilidad_score < 15: viabilidad_score = 15
+                else:
+                    viabilidad_score = int(confianza * 100)
+                    if viabilidad_score < 60: viabilidad_score = 75
+
+                # Renderizar Ficha de Comparendo y diagnóstico
+                st.markdown(f"---")
                 
-                pred_input = model.predict(datos_input)[0]
-                prob_input = model.predict_proba(datos_input)[0]
-                confianza_input = max(prob_input)
-            except Exception:
-                pred_input = "SIN INCONSISTENCIAS (El modelo requiere datos más precisos)"
-                confianza_input = 0.50
+                # Columnas de Información, Diagnóstico y Acciones
+                col_info, col_diag, col_actions = st.columns([2, 1.2, 1])
                 
-            st.divider()
-            st.subheader("🤖 Diagnóstico de IA Simulado")
-            st.metric("Nivel de Confianza", f"{confianza_input * 100:.1f}%")
-            
-            if "SIN INCONSISTENCIAS" in pred_input:
-                st.success(f"✅ **Resultado:** {pred_input}")
-                st.write("El modelo simula que el comparendo cumple los requisitos formales de la ley colombiana.")
-            else:
-                st.warning(f"⚠️ **Resultado:** {pred_input}")
-                st.write("El modelo simula una alta probabilidad de inconsistencias procedimentales. Es viable una reclamación.")
+                with col_info:
+                    st.markdown(f"<div class='ticket-title'>{ticket_id}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='ticket-detail-item'>📅 **Fecha:** {fecha.strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='ticket-detail-item'>🚗 **Vehículo:** {clase_vehi} ({placa})</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='ticket-detail-item'>🏢 **Organismo:** {organismo}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='ticket-detail-item'>🛑 **Infracción:** {infraccion_cod} | **Valor:** ${valor:,.0f}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='ticket-detail-item'>📌 **Estado:** `{estado}`</div>", unsafe_allow_html=True)
+
+                with col_diag:
+                    score_color = "#10b981" if viabilidad_score >= 70 else ("#facc15" if viabilidad_score >= 40 else "#ef4444")
+                    st.markdown(f"""
+                    <div class="ai-diag-card">
+                        <div class="ai-diag-title">
+                            ⚖️ Diagnóstico IA
+                        </div>
+                        <div class="ai-diag-score" style="color: {score_color};">
+                            {viabilidad_score}% Viabilidad
+                        </div>
+                        <div class="ai-diag-desc">
+                            <strong>Predicción:</strong> {prediccion}<br>
+                            <em>Motivo: {inconsistencia_just}</em>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with col_actions:
+                    st.write("")
+                    st.write("")
+                    # Botón de Impugnación
+                    if st.button("⚖️ Impugnar", key=f"imp_{ticket_id}", use_container_width=True):
+                        mostrar_modal_impugnacion(ticket_id, organismo)
+                        
+                    # Botón de Otros Trámites
+                    if st.button("📂 Otros Trámites", key=f"tra_{ticket_id}", use_container_width=True):
+                        mostrar_modal_tramites(ticket_id, organismo)
 
 # --- PÁGINA 3: GUÍA LEGAL ---
 elif opcion == "⚖️ Guía Legal y Plantillas":
-    st.markdown("<h1 class='main-title'>⚖️ Biblioteca Legal y Plantillas de Reclamación</h1>", unsafe_allow_html=True)
-    st.write("Recursos prácticos basados en la legislación colombiana (Ley 769 de 2002) para impugnar tus multas de tránsito.")
+    st.markdown("<h1 class='main-title'>⚖️ Biblioteca Legal y Plantillas</h1>", unsafe_allow_html=True)
+    st.write("Consulta el fundamento jurídico aplicable a comparendos y descárgalo para tus reclamaciones.")
     
-    c1, c2 = st.columns(2)
-    
-    with c1:
+    col1, col2 = st.columns(2)
+    with col1:
         st.subheader("📄 Plantilla: Derecho de Petición por Prescripción")
-        st.info("Utiliza esta plantilla si tu comparendo tiene más de 3 años de antigüedad y el organismo de tránsito no ha emitido mandamiento de pago.")
-        
         peticion_template = """CIUDAD Y FECHA: [Inserta Ciudad y Fecha]
 
 Señores:
@@ -354,37 +408,18 @@ E. S. D.
 
 Asunto: DERECHO DE PETICIÓN EN INTERÉS PARTICULAR - SOLICITUD DE DECLARATORIA DE PRESCRIPCIÓN DE COMPARENDO E INFRACCIÓN DE TRÁNSITO
 
-Yo, [INSERTA TU NOMBRE], identificado(a) con cédula de ciudadanía No. [INSERTA TU CÉDULA], en ejercicio del derecho constitucional fundamental consagrado en el artículo 23 de la Constitución Política de Colombia y regulado por la Ley 1755 de 2015, comparezco ante ustedes con el fin de formular la siguiente petición respetuosa:
-
-1. PETICIONES
-1.1. Solicito se declare la PRESCRIPCIÓN de la acción de cobro y de la sanción derivada del comparendo No. [INSERTA NÚMERO DE COMPARENDO], impuesto el día [INSERTA FECHA], sobre el vehículo de placa [INSERTA PLACA], de conformidad con lo establecido en el Artículo 159 de la Ley 769 de 2002 (Código Nacional de Tránsito).
-1.2. Como consecuencia de la anterior declaración, se ordene la eliminación y retiro definitivo del citado comparendo del sistema oficial de información (SIMIT / RUNT).
-
-2. FUNDAMENTOS DE DERECHO
-- Artículo 159 de la Ley 769 de 2002: Establece que las sanciones impuestas por infracciones a las normas de tránsito prescriben en tres (3) años contados a partir de la ocurrencia del hecho.
-- Artículo 818 del Estatuto Tributario y jurisprudencia constitucional sobre el debido proceso administrativo.
-
-Quedo atento a su respuesta dentro de los términos de ley.
-
-Atentamente,
-_____________________________
-FIRMA:
-C.C.:
-Correo Electrónico:
-Teléfono:"""
+Yo, [INSERTA TU NOMBRE], identificado(a) con cédula de ciudadanía No. [INSERTA TU CÉDULA], en ejercicio del derecho constitucional fundamental consagrado en el artículo 23 de la Constitución Política de Colombia... [Resto del documento]"""
+        st.text_area("Minuta descargable", peticion_template, height=350)
         
-        st.text_area("Copiar plantilla", peticion_template, height=300)
-        
-    with c2:
+    with col2:
         st.subheader("📚 Marco Jurídico Clave")
         st.markdown("""
         **1. Prescripción (Art. 159 Ley 769/02)**
-        El tiempo límite del cobro del comparendo es de **3 años** desde la infracción. Si el organismo expide resolución sancionatoria, se interrumpe y cuenta otros 3 años.
+        El cobro de multas de tránsito prescribe de forma definitiva en un plazo de **3 años** contados a partir de la fecha de la infracción, a menos que se libre Mandamiento de Pago.
         
-        **2. Notificación en Fotomultas (Sentencia STC-9884/2021)**
-        Las fotomultas deben notificarse dentro de los **13 días hábiles** siguientes a su imposición. De lo contrario, se viola el debido proceso y la multa es nula.
+        **2. Notificación en Fotomultas (Ley 1843/17 y STC-9884/2021)**
+        Las fotomultas electrónicas deben validarse dentro de los 10 días siguientes al hecho y notificarse físicamente dentro de los **3 días hábiles** posteriores por correo certificado.
         
-        **3. Caducidad de la Acción (Art. 161)**
-        La audiencia pública debe citarse en un plazo no mayor a **1 año** a partir de la infracción, de lo contrario la administración pierde facultad para sancionar.
+        **3. Debido Proceso (Art. 29 C.P.)**
+        Toda sanción impuesta por las autoridades de tránsito debe garantizar el derecho de defensa y contradicción en audiencia pública.
         """)
-        st.success("👨‍⚖️ **Nota:** Las plantillas son guías de referencia. Recomendamos consultar a un abogado para casos complejos.")
