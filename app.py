@@ -132,23 +132,24 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- CARGAR DATOS Y MODELO ---
-@st.cache_data
-def cargar_datos_y_modelo():
+# --- INICIALIZACIÓN DE SESIÓN (STATEFUL DATA) ---
+if 'df' not in st.session_state:
     try:
-        df = pd.read_csv('dataset.csv', encoding='utf-8')
+        df_init = pd.read_csv('dataset.csv', encoding='utf-8')
+        df_init['FECHA_INFRACCION'] = pd.to_datetime(df_init['FECHA_INFRACCION'], dayfirst=True)
+        st.session_state.df = df_init
     except FileNotFoundError:
-        st.error("🚨 El archivo 'dataset.csv' no se encuentra en la raíz del proyecto.")
+        st.error("🚨 El archivo 'dataset.csv' no se encuentra en la raíz.")
         st.stop()
 
-    df['FECHA_INFRACCION'] = pd.to_datetime(df['FECHA_INFRACCION'], dayfirst=True)
-    fecha_referencia = pd.to_datetime('01/01/2018')
-    df['DIAS_DESDE_REFERENCIA'] = (df['FECHA_INFRACCION'] - fecha_referencia).dt.days
-
-    # Preparar entrenamiento
+# --- MODEL TRAINING PIPELINE ---
+def entrenar_modelo(df_actual):
+    df_temp = df_actual.copy()
+    df_temp['DIAS_DESDE_REFERENCIA'] = (df_temp['FECHA_INFRACCION'] - pd.to_datetime('01/01/2018')).dt.days
+    
     features = ['DIAS_DESDE_REFERENCIA', 'CLASE_VEHI', 'COD_INFRACCION']
-    X = df[features].copy()
-    y = df['INCONSISTENCIA_JUSTIFICACION']
+    X = df_temp[features].copy()
+    y = df_temp['INCONSISTENCIA_JUSTIFICACION']
 
     le_clase = LabelEncoder()
     le_codigo = LabelEncoder()
@@ -160,9 +161,10 @@ def cargar_datos_y_modelo():
     model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X, y)
 
-    return df, model, le_clase, le_codigo
+    return model, le_clase, le_codigo
 
-df, model, le_clase, le_codigo = cargar_datos_y_modelo()
+# Entrenar modelo con los datos vigentes en sesión
+model, le_clase, le_codigo = entrenar_modelo(st.session_state.df)
 
 # --- MODALES / DIÁLOGOS DE STREAMLIT ---
 @st.dialog("📤 Enviar Requerimiento de Impugnación")
@@ -209,29 +211,63 @@ def mostrar_modal_tramites(ticket_id, organismo):
 with st.sidebar:
     st.image("https://img.icons8.com/external-flatart-icons-lineal-color-flatart-icons/128/external-justice-law-and-justice-flatart-icons-lineal-color-flatart-icons.png", width=70)
     st.markdown("## TránsitoLegal AI")
-    st.markdown("Sistema inteligente de defensa y diagnóstico legal de comparendos de tránsito.")
+    st.markdown("Sistema inteligente de defensa y diagnóstico de comparendos de tránsito.")
     st.write("---")
     
+    # 📂 CARGADOR DE DATOS REALES (EXCEL/CSV)
+    st.markdown("### 📂 Cargar Datos Reales")
+    archivo_usuario = st.file_uploader(
+        "Sube tu archivo de comparendos reales:",
+        type=["csv", "xlsx"],
+        help="Sube un archivo Excel o CSV que tenga columnas similares a: ID_COMPARENDO, CC_USUARIO, PLACA, COD_INFRACCION, CLASE_VEHI, VALOR_SANCION, ESTADO, etc."
+    )
+    
+    if archivo_usuario is not None:
+        try:
+            if archivo_usuario.name.endswith('.csv'):
+                df_cargado = pd.read_csv(archivo_usuario, encoding='utf-8')
+            else:
+                df_cargado = pd.read_excel(archivo_usuario)
+            
+            # Formatear fecha si existe
+            if 'FECHA_INFRACCION' in df_cargado.columns:
+                df_cargado['FECHA_INFRACCION'] = pd.to_datetime(df_cargado['FECHA_INFRACCION'], errors='coerce')
+            else:
+                df_cargado['FECHA_INFRACCION'] = pd.to_datetime(datetime.date.today())
+
+            # Asegurar columna de inconsistencia
+            if 'INCONSISTENCIA_JUSTIFICACION' not in df_cargado.columns:
+                df_cargado['INCONSISTENCIA_JUSTIFICACION'] = 'SIN INCONSISTENCIAS'
+            
+            st.session_state.df = df_cargado
+            st.success("¡Datos reales cargados con éxito!")
+        except Exception as e:
+            st.error(f"Error al procesar el archivo: {e}")
+
+    st.write("---")
     opcion = st.radio(
         "Navegación",
         ["📊 Dashboard de Control", "🔍 Diagnóstico de Comparendos", "⚖️ Guía Legal y Plantillas"]
     )
     
     st.write("---")
-    st.info("💡 **Versión:** 1.2.0 (Prototipo Web)\n\nImpulsado por Machine Learning para detectar inconsistencias en comparendos colombianos.")
+    st.info("💡 **Versión:** 1.3.0 (Datos Reales)\n\nPermite cargar planillas reales de comparendos e ingresar casos en vivo.")
 
 # --- PÁGINA 1: DASHBOARD ---
 if opcion == "📊 Dashboard de Control":
     st.markdown("<h1 class='main-title'>📊 Dashboard de Control de Comparendos</h1>", unsafe_allow_html=True)
     st.write("Análisis estadístico e histórico de infracciones y su viabilidad de defensa.")
     
+    # Datos de sesión
+    df_active = st.session_state.df
+    
     # Métricas
-    total_comparendos = len(df)
-    inconsistencias = df[df['INCONSISTENCIA_JUSTIFICACION'] != 'SIN INCONSISTENCIAS']
+    total_comparendos = len(df_active)
+    inconsistencias = df_active[df_active['INCONSISTENCIA_JUSTIFICACION'] != 'SIN INCONSISTENCIAS']
     num_inconsistencias = len(inconsistencias)
-    tasa_irregularidad = (num_inconsistencias / total_comparendos) * 100
-    total_pesos = df['VALOR_SANCION'].sum()
-    total_ahorro_potencial = inconsistencias['VALOR_SANCION'].sum()
+    tasa_irregularidad = (num_inconsistencias / total_comparendos) * 100 if total_comparendos > 0 else 0
+    total_pesos = df_active['VALOR_SANCION'].sum() if 'VALOR_SANCION' in df_active.columns else 0
+    total_ahorro_potencial = inconsistencias['VALOR_SANCION'].sum() if 'VALOR_SANCION' in df_active.columns else 0
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -266,131 +302,200 @@ if opcion == "📊 Dashboard de Control":
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("⚠️ Distribución de Inconsistencias")
-        st.bar_chart(df['INCONSISTENCIA_JUSTIFICACION'].value_counts()[1:])
+        if num_inconsistencias > 0:
+            st.bar_chart(df_active['INCONSISTENCIA_JUSTIFICACION'].value_counts())
+        else:
+            st.info("No hay inconsistencias en la base de datos actual.")
     with c2:
         st.subheader("🚗 Distribución por Clase de Vehículo")
-        st.bar_chart(df['CLASE_VEHI'].value_counts())
+        if 'CLASE_VEHI' in df_active.columns:
+            st.bar_chart(df_active['CLASE_VEHI'].value_counts())
+        else:
+            st.info("No hay columna CLASE_VEHI en el dataset.")
+
+    st.subheader("📋 Tabla General de Registros Vigentes")
+    st.dataframe(df_active, use_container_width=True)
 
 # --- PÁGINA 2: DIAGNÓSTICO ---
 elif opcion == "🔍 Diagnóstico de Comparendos":
     st.markdown("<h1 class='main-title'>🔍 Analizador Inteligente de Comparendos</h1>", unsafe_allow_html=True)
-    st.write("Introduce datos para consultar en la base de datos de tránsito y obtener un análisis predictivo de viabilidad.")
+    st.write("Consulta comparendos en la base de datos cargada o ingresa una multa real para evaluarla.")
 
-    # Tarjeta de Búsqueda Segura
-    st.markdown("""
-    <div style="background-color: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 25px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h4 style="margin: 0; color: #f8fafc;">Consultar Base de Datos</h4>
-            <span style="font-size: 0.85rem; color: #94a3b8;">🔒 Búsqueda Segura</span>
-        </div>
-    """, unsafe_allow_html=True)
+    tabs = st.tabs(["🔎 Consultar por CC / Placa", "➕ Registrar Comparendo Real"])
 
-    col_cc, col_placa = st.columns(2)
-    with col_cc:
-        st.write("**Por Cédula de Ciudadanía (CC)**")
-        cc_input = st.text_input("Ingresa CC de ejemplo (ej. 80987654):", placeholder="Ej: 80987654", key="cc")
-        buscar_cc = st.button("Buscar por Cédula", type="primary", use_container_width=True)
+    with tabs[0]:
+        # Tarjeta de Búsqueda Segura
+        st.markdown("""
+        <div style="background-color: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 25px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h4 style="margin: 0; color: #f8fafc;">Consultar Base de Datos</h4>
+                <span style="font-size: 0.85rem; color: #94a3b8;">🔒 Búsqueda Segura</span>
+            </div>
+        """, unsafe_allow_html=True)
 
-    with col_placa:
-        st.write("**Por Placa Vehicular**")
-        placa_input = st.text_input("Ingresa Placa de ejemplo (ej. XYZ987):", placeholder="Ej: XYZ987", key="placa").upper()
-        buscar_placa = st.button("Buscar por Placa", type="secondary", use_container_width=True)
-        
-    st.markdown("</div>", unsafe_allow_html=True)
+        col_cc, col_placa = st.columns(2)
+        with col_cc:
+            st.write("**Por Cédula de Ciudadanía (CC)**")
+            cc_input = st.text_input("Ingresa CC de ejemplo (ej. 80987654):", placeholder="Ej: 80987654", key="cc")
+            buscar_cc = st.button("Buscar por Cédula", type="primary", use_container_width=True)
 
-    # Lógica de Consulta
-    resultados = None
-    if buscar_cc and cc_input:
-        try:
-            cc_int = int(cc_input.strip())
-            resultados = df[df['CC_USUARIO'] == cc_int]
-        except ValueError:
-            st.error("Por favor, ingresa un número de cédula válido.")
-    elif buscar_placa and placa_input:
-        resultados = df[df['PLACA'].str.upper() == placa_input.strip()]
-
-    # Mostrar Resultados
-    if resultados is not None:
-        if len(resultados) == 0:
-            st.warning("⚠️ No se encontraron comparendos registrados con los datos suministrados.")
-        else:
-            st.success(f"📋 Se encontraron **{len(resultados)}** comparendos registrados:")
+        with col_placa:
+            st.write("**Por Placa Vehicular**")
+            placa_input = st.text_input("Ingresa Placa de ejemplo (ej. XYZ987):", placeholder="Ej: XYZ987", key="placa").upper()
+            buscar_placa = st.button("Buscar por Placa", type="secondary", use_container_width=True)
             
-            for index, row in resultados.iterrows():
-                # Formatear datos
-                ticket_id = row['ID_COMPARENDO']
-                organismo = row['LUGAR_INFRACCION'] # usando lugar como el organismo de tránsito local
-                infraccion_cod = row['COD_INFRACCION']
-                clase_vehi = row['CLASE_VEHI']
-                valor = row['VALOR_SANCION']
-                estado = row['ESTADO']
-                placa = row['PLACA']
-                fecha = row['FECHA_INFRACCION']
-                inconsistencia_just = row['INCONSISTENCIA_JUSTIFICACION']
+        st.markdown("</div>", unsafe_allow_html=True)
 
-                # Predicción usando ML
-                dias = row['DIAS_DESDE_REFERENCIA']
-                try:
-                    clase_num = le_clase.transform([clase_vehi])[0]
-                    codigo_num = le_codigo.transform([infraccion_cod])[0]
-                    datos_prediccion = [[dias, clase_num, codigo_num]]
-                    prediccion = model.predict(datos_prediccion)[0]
-                    probabilidades = model.predict_proba(datos_prediccion)[0]
-                    class_index = list(model.classes_).index(prediccion)
-                    confianza = probabilidades[class_index]
-                except Exception:
-                    prediccion = inconsistencia_just
-                    confianza = 0.90
+        # Lógica de Consulta
+        resultados = None
+        df_active = st.session_state.df
+        
+        if buscar_cc and cc_input:
+            try:
+                cc_int = int(cc_input.strip())
+                resultados = df_active[df_active['CC_USUARIO'] == cc_int]
+            except ValueError:
+                st.error("Por favor, ingresa un número de cédula válido.")
+        elif buscar_placa and placa_input:
+            resultados = df_active[df_active['PLACA'].str.upper() == placa_input.strip()]
 
-                # Calcular puntuación de viabilidad de impugnación
-                if prediccion == 'SIN INCONSISTENCIAS':
-                    viabilidad_score = int((1 - confianza) * 100)
-                    if viabilidad_score < 15: viabilidad_score = 15
+        # Mostrar Resultados de Búsqueda
+        if resultados is not None:
+            if len(resultados) == 0:
+                st.warning("⚠️ No se encontraron comparendos registrados con los datos suministrados.")
+            else:
+                st.success(f"📋 Se encontraron **{len(resultados)}** comparendos registrados:")
+                
+                for index, row in resultados.iterrows():
+                    # Formatear datos
+                    ticket_id = row['ID_COMPARENDO']
+                    organismo = row.get('LUGAR_INFRACCION', 'Secretaría de Movilidad')
+                    infraccion_cod = row.get('COD_INFRACCION', 'Desconocido')
+                    clase_vehi = row.get('CLASE_VEHI', 'AUTOMOVIL')
+                    valor = row.get('VALOR_SANCION', 0)
+                    estado = row.get('ESTADO', 'ACTIVO')
+                    placa = row.get('PLACA', 'SIN PLACA')
+                    fecha = row['FECHA_INFRACCION']
+                    inconsistencia_just = row.get('INCONSISTENCIA_JUSTIFICACION', 'SIN INCONSISTENCIAS')
+
+                    # Predicción usando ML
+                    dias = (pd.to_datetime(fecha) - pd.to_datetime('01/01/2018')).days
+                    try:
+                        clase_num = le_clase.transform([clase_vehi])[0]
+                        codigo_num = le_codigo.transform([infraccion_cod])[0]
+                        datos_prediccion = [[dias, clase_num, codigo_num]]
+                        prediccion = model.predict(datos_prediccion)[0]
+                        probabilidades = model.predict_proba(datos_prediccion)[0]
+                        class_index = list(model.classes_).index(prediccion)
+                        confianza = probabilidades[class_index]
+                    except Exception:
+                        prediccion = inconsistencia_just
+                        confianza = 0.90
+
+                    # Calcular puntuación de viabilidad de impugnación
+                    if prediccion == 'SIN INCONSISTENCIAS':
+                        viabilidad_score = int((1 - confianza) * 100)
+                        if viabilidad_score < 15: viabilidad_score = 15
+                    else:
+                        viabilidad_score = int(confianza * 100)
+                        if viabilidad_score < 60: viabilidad_score = 75
+
+                    st.markdown(f"---")
+                    
+                    # Columnas de Información, Diagnóstico y Acciones
+                    col_info, col_diag, col_actions = st.columns([2, 1.2, 1])
+                    
+                    with col_info:
+                        st.markdown(f"<div class='ticket-title'>{ticket_id}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='ticket-detail-item'>📅 **Fecha:** {fecha.strftime('%d/%m/%Y') if hasattr(fecha, 'strftime') else str(fecha)}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='ticket-detail-item'>🚗 **Vehículo:** {clase_vehi} ({placa})</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='ticket-detail-item'>🏢 **Organismo:** {organismo}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='ticket-detail-item'>🛑 **Infracción:** {infraccion_cod} | **Valor:** ${valor:,.0f}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='ticket-detail-item'>📌 **Estado:** `{estado}`</div>", unsafe_allow_html=True)
+
+                    with col_diag:
+                        score_color = "#10b981" if viabilidad_score >= 70 else ("#facc15" if viabilidad_score >= 40 else "#ef4444")
+                        st.markdown(f"""
+                        <div class="ai-diag-card">
+                            <div class="ai-diag-title">
+                                ⚖️ Diagnóstico IA
+                            </div>
+                            <div class="ai-diag-score" style="color: {score_color};">
+                                {viabilidad_score}% Viabilidad
+                            </div>
+                            <div class="ai-diag-desc">
+                                <strong>Predicción:</strong> {prediccion}<br>
+                                <em>Motivo: {inconsistencia_just}</em>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with col_actions:
+                        st.write("")
+                        st.write("")
+                        # Botón de Impugnación
+                        if st.button("⚖️ Impugnar", key=f"imp_{ticket_id}", use_container_width=True):
+                            mostrar_modal_impugnacion(ticket_id, organismo)
+                            
+                        # Botón de Otros Trámites
+                        if st.button("📂 Otros Trámites", key=f"tra_{ticket_id}", use_container_width=True):
+                            mostrar_modal_tramites(ticket_id, organismo)
+
+    with tabs[1]:
+        st.subheader("📝 Registrar Datos de un Comparendo Real")
+        st.write("Rellena este formulario con la información del comparendo que desees registrar en la sesión de análisis:")
+        
+        with st.form("registro_comparendo_real"):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                nuevo_id = st.text_input("Número del Comparendo (ID):", placeholder="Ej: COMP-2026-999")
+                nuevo_cc = st.number_input("Cédula del Propietario (CC):", min_value=0, value=80987654)
+                nuevo_valor = st.number_input("Valor de la Multa ($):", min_value=0, value=500000, step=10000)
+            with c2:
+                nueva_placa = st.text_input("Placa del Vehículo:", placeholder="Ej: ABC123").upper()
+                nueva_clase = st.selectbox("Clase del Vehículo:", ["AUTOMOVIL", "MOTOCICLETA", "CAMION", "BUS", "TAXI"])
+                nuevo_codigo = st.selectbox("Código de la Infracción:", ["C04", "B01", "B02", "C02", "D02"])
+            with c3:
+                nueva_fecha = st.date_input("Fecha de Imposición:", datetime.date.today())
+                nuevo_organismo = st.text_input("Organismo de Tránsito (Lugar):", placeholder="Ej: Bogotá Calle 100")
+                nuevo_estado = st.selectbox("Estado del Comparendo:", ["PENDIENTE", "EN PROCESO", "PAGADO", "ARCHIVADO"])
+                
+            inconsistencia_manual = st.selectbox(
+                "¿Tiene inconsistencias conocidas? (Opcional)",
+                [
+                    "SIN INCONSISTENCIAS",
+                    "PRESCRITO: La sanción ha prescrito de conformidad con el art. 8 de la Ley 769 de 2002 (mas de 3 años).",
+                    "ERROR CODIGO: El codigo es inaplicable para la clase de vehículo.",
+                    "ERROR PROCEDIMIENTO: Falta de firmas oficiales o identificación de agente.",
+                    "ERROR LUGAR: Error en ubicación o coordenadas reportadas."
+                ]
+            )
+            
+            enviar_registro = st.form_submit_button("Registrar Comparendo en la Base de Datos", type="primary")
+            
+            if enviar_registro:
+                if not nuevo_id or not nueva_placa or not nuevo_organismo:
+                    st.error("Por favor completa los campos obligatorios: ID, Placa y Organismo.")
                 else:
-                    viabilidad_score = int(confianza * 100)
-                    if viabilidad_score < 60: viabilidad_score = 75
-
-                # Renderizar Ficha de Comparendo y diagnóstico
-                st.markdown(f"---")
-                
-                # Columnas de Información, Diagnóstico y Acciones
-                col_info, col_diag, col_actions = st.columns([2, 1.2, 1])
-                
-                with col_info:
-                    st.markdown(f"<div class='ticket-title'>{ticket_id}</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='ticket-detail-item'>📅 **Fecha:** {fecha.strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='ticket-detail-item'>🚗 **Vehículo:** {clase_vehi} ({placa})</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='ticket-detail-item'>🏢 **Organismo:** {organismo}</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='ticket-detail-item'>🛑 **Infracción:** {infraccion_cod} | **Valor:** ${valor:,.0f}</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='ticket-detail-item'>📌 **Estado:** `{estado}`</div>", unsafe_allow_html=True)
-
-                with col_diag:
-                    score_color = "#10b981" if viabilidad_score >= 70 else ("#facc15" if viabilidad_score >= 40 else "#ef4444")
-                    st.markdown(f"""
-                    <div class="ai-diag-card">
-                        <div class="ai-diag-title">
-                            ⚖️ Diagnóstico IA
-                        </div>
-                        <div class="ai-diag-score" style="color: {score_color};">
-                            {viabilidad_score}% Viabilidad
-                        </div>
-                        <div class="ai-diag-desc">
-                            <strong>Predicción:</strong> {prediccion}<br>
-                            <em>Motivo: {inconsistencia_just}</em>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                with col_actions:
-                    st.write("")
-                    st.write("")
-                    # Botón de Impugnación
-                    if st.button("⚖️ Impugnar", key=f"imp_{ticket_id}", use_container_width=True):
-                        mostrar_modal_impugnacion(ticket_id, organismo)
-                        
-                    # Botón de Otros Trámites
-                    if st.button("📂 Otros Trámites", key=f"tra_{ticket_id}", use_container_width=True):
-                        mostrar_modal_tramites(ticket_id, organismo)
+                    # Crear fila
+                    nueva_fila = {
+                        'ID_COMPARENDO': nuevo_id,
+                        'FECHA_INFRACCION': pd.to_datetime(nueva_fecha),
+                        'HORA_INFRACCION': '00:00',
+                        'CC_USUARIO': nuevo_cc,
+                        'PLACA': nueva_placa,
+                        'COD_INFRACCION': nuevo_codigo,
+                        'CLASE_VEHI': nueva_clase,
+                        'LUGAR_INFRACCION': nuevo_organismo,
+                        'VALOR_SANCION': nuevo_valor,
+                        'ESTADO': nuevo_estado,
+                        'INCONSISTENCIA_JUSTIFICACION': inconsistencia_manual
+                    }
+                    # Concatenar en sesión
+                    st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([nueva_fila])], ignore_index=True)
+                    st.success(f"🎉 Comparendo **{nuevo_id}** registrado exitosamente. Ahora puedes consultarlo en la pestaña de búsquedas.")
+                    st.balloons()
+                    st.rerun()
 
 # --- PÁGINA 3: GUÍA LEGAL ---
 elif opcion == "⚖️ Guía Legal y Plantillas":
@@ -423,3 +528,28 @@ Yo, [INSERTA TU NOMBRE], identificado(a) con cédula de ciudadanía No. [INSERTA
         **3. Debido Proceso (Art. 29 C.P.)**
         Toda sanción impuesta por las autoridades de tránsito debe garantizar el derecho de defensa y contradicción en audiencia pública.
         """)
+        
+    # --- CONECTAR A APIS GUBERNAMENTALES REALES ---
+    st.write("---")
+    st.subheader("🌐 Integración Comercial con SIMIT / RUNT (APIs de Terceros)")
+    st.markdown("""
+    Para que este software realice consultas automáticas directas sobre los portales estatales de Colombia en tiempo real sin ingresar datos a mano, se debe acoplar un servicio de consulta API de terceros que resuelva CAPTCHAs de forma autónoma.
+    
+    **Proveedores de API sugeridos en Colombia:**
+    - **Logimov API**: Permite consultar comparendos en SIMIT usando placa o cédula de forma automatizada.
+    - **RuntAPI**: Servicio de consulta de vehículos e infracciones registradas en RUNT.
+    - **Scrapers Personalizados**: Implementar un servicio API propio en la nube (ej. con Node.js, Puppeteer y un solucionador de captchas como 2Captcha o Anti-Captcha).
+    
+    *Ejemplo de código para conectar una API real en `app.py`:*
+    ```python
+    import requests
+
+    def consultar_simit_real(cedula):
+        api_url = "https://api.proveedorcolombia.com/v1/simit"
+        headers = {"Authorization": "Bearer TU_API_KEY"}
+        response = requests.get(f"{api_url}?cc={cedula}", headers=headers)
+        if response.status_code == 200:
+            return response.json() # Retorna los comparendos en tiempo real
+        return None
+    ```
+    """)
