@@ -14,6 +14,10 @@ import pandas as pd
 import numpy as np
 import datetime
 import os
+import sys
+
+# Forzar codificación UTF-8 para la salida en consola (Windows)
+sys.stdout.reconfigure(encoding='utf-8')
 
 # ─── CONFIGURACIÓN ─────────────────────────────────────────────────────────────
 BASE_URL    = "https://www.datos.gov.co/resource/72nf-y4v3.json"
